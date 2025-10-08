@@ -1,4 +1,13 @@
+# venvs
+.venv/
 venv/
+# Python
 __pycache__/
 *.pyc
-gunicorn
+# IDE
+.vscode/
+.idea/
+# Exports temporales
+temp_exports/
+# Entorno
+.env

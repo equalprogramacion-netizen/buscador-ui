@@ -1,26 +1,20 @@
 # ==============================
 # IMPORTACIÓN DE LIBRERÍAS
 # ==============================
-# Se importan las librerías necesarias para la aplicación web, manejo de base de datos,
-# transformación de coordenadas, manipulación de archivos y fechas.
 from flask import Flask, render_template, request, send_file, session, jsonify
 import mysql.connector
 from mysql.connector import pooling
 from pyproj import Transformer
-import csv
-import io
+import csv, io, os, glob, time, uuid
 from collections import defaultdict
-import uuid
-import os
-import glob
 from openpyxl import Workbook
-import time
+from dotenv import load_dotenv
+
+load_dotenv()  # Cargar variables del .env
 
 # ==============================
 # CONFIGURACIÓN GENERAL DE FLASK
 # ==============================
-# Se configura la aplicación Flask, se define la clave secreta de sesión y el directorio
-# donde se guardarán temporalmente los archivos exportados (CSV y Excel).
 app = Flask(__name__)
 app.secret_key = 'clave_secreta'
 app.config['EXPORT_FOLDER'] = 'temp_exports'
@@ -29,7 +23,6 @@ os.makedirs(app.config['EXPORT_FOLDER'], exist_ok=True)
 # ==========================================================
 # FUNCIÓN PARA LIMPIAR ARCHIVOS ANTIGUOS (CSV Y EXCEL > 1h)
 # ==========================================================
-# Esta función elimina archivos temporales de exportación que tengan más de una hora de antigüedad.
 def limpiar_archivos_antiguos():
     una_hora_atras = time.time() - 3600
     for extension in ('*.csv', '*.xlsx'):
@@ -43,29 +36,47 @@ def limpiar_archivos_antiguos():
 # ========================================
 # CONFIGURACIÓN DEL POOL DE CONEXIONES DB
 # ========================================
-# Se crea un pool de conexiones para mejorar el rendimiento y reutilizar conexiones
-# a la base de datos MySQL.
+# OJO: el schema (base de datos) va en DB_NAME; la tabla sola en DB_TABLE
+DB_TABLE = os.getenv("DB_TABLE", "biotic_database").strip()   # nombre de la tabla
+DB_NAME  = os.getenv("DB_NAME",  "railway").strip()           # schema/base de datos
+
+# Validación mínima de ENV
+_required = ["DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWORD"]
+missing = [k for k in _required if not os.getenv(k)]
+if missing:
+    raise RuntimeError(f"Faltan variables en .env: {', '.join(missing)}")
+
 dbconfig = {
     "host": os.getenv("DB_HOST"),
     "port": int(os.getenv("DB_PORT")),
     "user": os.getenv("DB_USER"),
     "password": os.getenv("DB_PASSWORD"),
-    "database": os.getenv("DB_NAME")
+    "database": DB_NAME,
+    "charset": "utf8mb4",
+    "use_unicode": True,
+    "autocommit": True,
+    "connection_timeout": 10,
 }
 cnxpool = pooling.MySQLConnectionPool(pool_name="mypool", pool_size=5, **dbconfig)
+
+# Helper para calificar nombres con backticks
+def tq(schema: str, table: str) -> str:
+    return f"`{schema}`.`{table}`"
+
+FULL_TABLE = tq(DB_NAME, DB_TABLE)
 
 # ================================================
 # CACHÉ Y FUNCIÓN PARA OBTENER NOMBRES DE COLUMNAS
 # ================================================
-# Se cachean las columnas de la tabla para evitar múltiples llamadas a la base de datos.
 columnas_cache = []
 
 def obtener_columnas():
+    """Lee y cachea las columnas de la tabla a consultar."""
     global columnas_cache
     if not columnas_cache:
         conn = cnxpool.get_connection()
         cursor = conn.cursor()
-        cursor.execute("SHOW COLUMNS FROM biotic_database")
+        cursor.execute(f"SHOW COLUMNS FROM {FULL_TABLE}")
         columnas_cache = [col[0] for col in cursor.fetchall()]
         cursor.close()
         conn.close()
@@ -74,27 +85,30 @@ def obtener_columnas():
 # ===============================
 # RUTA PRINCIPAL "/"
 # ===============================
-# Renderiza el formulario principal con todos los filtros disponibles (Municipio, Proyecto,
-# Especie, Grupo Biológico, Tipo de Hidrobiota).
 @app.route('/')
 def index():
     conn = cnxpool.get_connection()
     cursor = conn.cursor()
 
-    # Consulta de filtros únicos
-    cursor.execute("SELECT DISTINCT Municipio FROM biotic_database ORDER BY Municipio")
+    cursor.execute(f"SELECT DISTINCT Municipio FROM {FULL_TABLE} ORDER BY Municipio")
     municipios = [row[0] for row in cursor.fetchall()]
 
-    cursor.execute("SELECT DISTINCT Proyecto FROM biotic_database ORDER BY Proyecto")
+    cursor.execute(f"SELECT DISTINCT Proyecto FROM {FULL_TABLE} ORDER BY Proyecto")
     proyectos = [row[0] for row in cursor.fetchall()]
 
-    cursor.execute("SELECT DISTINCT Nombre_cientifico FROM biotic_database ORDER BY Nombre_cientifico")
+    cursor.execute(f"SELECT DISTINCT Nombre_cientifico FROM {FULL_TABLE} ORDER BY Nombre_cientifico")
     especies = [row[0] for row in cursor.fetchall()]
 
-    cursor.execute("SELECT DISTINCT Grupo_Biologico FROM biotic_database WHERE Grupo_Biologico IS NOT NULL ORDER BY Grupo_Biologico")
+    cursor.execute(
+        f"SELECT DISTINCT Grupo_Biologico FROM {FULL_TABLE} "
+        f"WHERE Grupo_Biologico IS NOT NULL ORDER BY Grupo_Biologico"
+    )
     grupos_biologicos = [row[0] for row in cursor.fetchall()]
 
-    cursor.execute("SELECT DISTINCT Tipo_Hidrobiota FROM biotic_database WHERE Tipo_Hidrobiota IS NOT NULL ORDER BY Tipo_Hidrobiota")
+    cursor.execute(
+        f"SELECT DISTINCT Tipo_Hidrobiota FROM {FULL_TABLE} "
+        f"WHERE Tipo_Hidrobiota IS NOT NULL ORDER BY Tipo_Hidrobiota"
+    )
     tipos_hidrobiota = [row[0] for row in cursor.fetchall()]
 
     cursor.close()
@@ -113,7 +127,6 @@ def index():
 # ===============================
 # RUTA "/columnas"
 # ===============================
-# Devuelve las columnas de la base de datos en formato JSON para el frontend.
 @app.route("/columnas")
 def columnas():
     return jsonify({"columnas": obtener_columnas()})
@@ -121,13 +134,11 @@ def columnas():
 # ======================================
 # RUTA "/buscar" (BÚSQUEDA DE REGISTROS)
 # ======================================
-# Esta ruta procesa los filtros enviados desde el formulario y realiza la consulta a la base de datos.
-# Posteriormente transforma las coordenadas y exporta los resultados en CSV y Excel.
 @app.route('/buscar', methods=['POST'])
 def buscar():
     limpiar_archivos_antiguos()
 
-    # ---------- Captura de filtros del formulario ----------
+    # ---------- Captura de filtros ----------
     palabra_clave = request.form.get('palabra', '').strip()
     columna_clave = request.form.get('columna', '')
     municipio = request.form.get('filtro_municipio')
@@ -139,10 +150,10 @@ def buscar():
     tipo_hidrobiota = request.form.get('filtro_tipo_hidrobiota')
     columnas_mostrar = request.form.getlist('columnas_mostrar')
 
-    # ---------- Validación y preparación de columnas ----------
+    # ---------- Columnas ----------
     columnas_disponibles = obtener_columnas()
 
-    # Columnas esenciales que deben ir siempre
+    # columnas clave que siempre incluimos en la exportación
     columnas_clave = [
         'Nombre_cientifico',
         'Nombre_comun',
@@ -151,24 +162,23 @@ def buscar():
         'Fecha_de_colecta'
     ]
 
-    # Si no se seleccionaron columnas o se seleccionó "__todas__", se muestran todas
+    # Si no se seleccionaron o pidieron __todas__
     if '__todas__' in columnas_mostrar or not columnas_mostrar:
         columnas_mostrar = columnas_disponibles.copy()
     else:
         columnas_mostrar = list(set(columnas_mostrar + columnas_clave))
 
-    # Validación final
+    # Validamos contra columnas reales (respeta el orden en la tabla)
     columnas_mostrar = [col for col in columnas_disponibles if col in columnas_mostrar]
 
-    # ---------- Construcción de consulta SQL ----------
+    # ---------- Construcción del SQL ----------
     conn = cnxpool.get_connection()
     cursor = conn.cursor(dictionary=True)
 
-    query = "SELECT * FROM biotic_database WHERE 1=1"
+    query = f"SELECT * FROM {FULL_TABLE} WHERE 1=1"
     filtros = []
     valores = []
 
-    # Agregado de filtros dinámicamente
     if municipio:
         filtros.append("Municipio LIKE %s")
         valores.append(f"%{municipio}%")
@@ -194,7 +204,7 @@ def buscar():
         if columna_clave and columna_clave != "__todas__" and columna_clave in columnas_disponibles:
             filtros.append(f"{columna_clave} LIKE %s")
             valores.append(f"%{palabra_clave}%")
-        elif columna_clave == "__todas__":
+        elif columna_clave == "__todas__" and columnas_disponibles:
             subfiltros = [f"{col} LIKE %s" for col in columnas_disponibles]
             filtros.append("(" + " OR ".join(subfiltros) + ")")
             valores.extend([f"%{palabra_clave}%"] * len(columnas_disponibles))
@@ -206,9 +216,8 @@ def buscar():
     resultados = cursor.fetchall()
 
     # ===============================
-    # TRANSFORMACIÓN DE COORDENADAS MAGNA A WGS84
+    # TRANSFORMACIÓN DE COORDENADAS
     # ===============================
-    # Convierte coordenadas de EPSG específico a WGS84 (latitud/longitud estándar).
     transformadores = defaultdict(lambda: None)
     coordenadas = []
 
@@ -221,7 +230,9 @@ def buscar():
                 lat = float(lat)
                 lon = float(lon)
                 if not transformadores[epsg]:
-                    transformadores[epsg] = Transformer.from_crs(f"EPSG:{epsg}", "EPSG:4326", always_xy=True)
+                    transformadores[epsg] = Transformer.from_crs(
+                        f"EPSG:{epsg}", "EPSG:4326", always_xy=True
+                    )
                 lon_wgs84, lat_wgs84 = transformadores[epsg].transform(lon, lat)
                 fila['Latitud_decimal'] = lat_wgs84
                 fila['Longitud_decimal'] = lon_wgs84
@@ -245,14 +256,14 @@ def buscar():
     csv_path = os.path.join(app.config['EXPORT_FOLDER'], f"{export_id}.csv")
     xlsx_path = os.path.join(app.config['EXPORT_FOLDER'], f"{export_id}.xlsx")
 
-    # Exportar a CSV
+    # CSV
     with open(csv_path, 'w', encoding='utf-8', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=columnas_mostrar)
         writer.writeheader()
         for fila in resultados:
             writer.writerow({col: fila.get(col, '') for col in columnas_mostrar})
 
-    # Exportar a Excel
+    # Excel
     wb = Workbook()
     ws = wb.active
     ws.append(columnas_mostrar)
@@ -280,7 +291,6 @@ def buscar():
 # ===================================
 # RUTA "/exportar_csv" (DESCARGA CSV)
 # ===================================
-# Permite al usuario descargar el archivo CSV generado con los resultados filtrados.
 @app.route('/exportar_csv')
 def exportar_csv():
     export_path = session.get('csv_export_path')
@@ -291,18 +301,35 @@ def exportar_csv():
 # =======================================
 # RUTA "/exportar_excel" (DESCARGA EXCEL)
 # =======================================
-# Permite al usuario descargar el archivo Excel generado con los resultados filtrados.
 @app.route('/exportar_excel')
 def exportar_excel():
     export_path = session.get('excel_export_path')
     if not export_path or not os.path.exists(export_path):
         return 'No hay resultados para exportar en Excel', 400
-    return send_file(export_path, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name='resultados.xlsx')
+    return send_file(
+        export_path,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name='resultados.xlsx'
+    )
+
+# (Opcional) endpoint de salud
+@app.route('/health')
+def health():
+    try:
+        conn = cnxpool.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1")
+        cursor.fetchone()
+        cursor.close()
+        conn.close()
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}, 500
 
 # ===============================
 # EJECUCIÓN DE LA APLICACIÓN
 # ===============================
-# Se ejecuta la aplicación en modo debug para desarrollo local.
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)

@@ -97,3 +97,16 @@ biotico_app_web/
 ## ✍️ Autor
 
 - **Carlos Guinea** - [GitHub](https://github.com/CarlosGuinea666)
+
+## Local
+1) Crear .env (ver ejemplo abajo)
+2) `pip install -r requirements.txt`
+3) `python app.py`
+
+## Variables de entorno
+DB_HOST=...
+DB_PORT=...
+DB_USER=...
+DB_PASSWORD=...
+DB_NAME=railway
+DB_TABLE=biotic_database
