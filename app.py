@@ -1,11 +1,11 @@
 # ==============================
 # IMPORTACIÓN DE LIBRERÍAS
 # ==============================
-from flask import Flask, render_template, request, send_file, session, jsonify
+from flask import Flask, render_template, request, send_file, session, jsonify, redirect, make_response, g
 import mysql.connector
 from mysql.connector import pooling
 from pyproj import Transformer
-import csv, io, os, glob, time, uuid
+import csv, io, os, glob, time, uuid, hmac, json, base64
 from collections import defaultdict
 from openpyxl import Workbook
 from dotenv import load_dotenv
@@ -16,9 +16,184 @@ load_dotenv()  # Cargar variables del .env
 # CONFIGURACIÓN GENERAL DE FLASK
 # ==============================
 app = Flask(__name__)
-app.secret_key = 'clave_secreta'
-app.config['EXPORT_FOLDER'] = 'temp_exports'
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "cambia-esta-clave")  # solo para session de Flask (export paths)
+app.config['EXPORT_FOLDER'] = os.getenv("EXPORT_FOLDER", 'temp_exports')
 os.makedirs(app.config['EXPORT_FOLDER'], exist_ok=True)
+
+IS_PROD = os.getenv("ENV", "development").lower() == "production"
+
+# ==========================================================
+# PUERTA (SSO LIGERO) DESDE EL HUB
+# ==========================================================
+GATEWAY_SHARED_SECRET      = os.getenv("GATEWAY_SHARED_SECRET", "cambia-esto-por-un-secreto-largo-y-unico")
+GATEWAY_SHARED_SECRET_PREV = os.getenv("GATEWAY_SHARED_SECRET_PREV", "")  # rotación opcional
+GATE_AUD = os.getenv("GATE_AUD", "buscador")  # audiencia esperada en este servicio
+
+# Cookie de sesión local de este servicio (no es la del Hub)
+SVC_SESSION_COOKIE = os.getenv("SVC_SESSION_COOKIE", "svc_buscador")
+SVC_SESSION_TTL    = int(os.getenv("SVC_SESSION_TTL", "1800"))  # 30 min
+
+# Dónde enviar al usuario si no tiene sesión aquí
+HUB_HOME = os.getenv("HUB_HOME", "http://127.0.0.1:8000/choose")
+
+# Rutas anónimas permitidas (raíz protegida)
+ANON_PATHS = set((
+    # "/"  # ← quitado: la raíz ahora exige SSO vía Hub
+    "/health", "/healthz",
+    "/favicon.ico", "/robots.txt",
+    # Si NO quieres exponer docs del buscador, no agregues aquí sus rutas
+))
+
+# ============ Helpers base64url/HMAC para `st` ============
+def _b64url_pad(s: str) -> bytes:
+    s += "=" * ((4 - len(s) % 4) % 4)
+    return s.encode("ascii")
+
+def _b64url_decode_to_json(b64: str) -> dict:
+    raw = base64.urlsafe_b64decode(_b64url_pad(b64))
+    return json.loads(raw.decode("utf-8"))
+
+def _sign_st_payload(payload_b64: str, secret: str) -> str:
+    sig = hmac.new(secret.encode("utf-8"), payload_b64.encode("ascii"), digestmod="sha256").digest()
+    return base64.urlsafe_b64encode(sig).rstrip(b"=").decode("ascii")
+
+def _verify_st(token: str) -> dict | None:
+    """
+    st = <base64url(json_payload)>.<base64url(signature)>
+    payload = {"sub","aud","iat","exp","rid","iss"}  (como lo genera el Hub)
+    Valida HMAC (secret actual o previo), exp y aud.
+    Devuelve dict si es válido; si no, None.
+    """
+    if not token or "." not in token:
+        return None
+    parts = token.split(".")
+    if len(parts) != 2:
+        return None
+    payload_b64, sig_b64 = parts[0], parts[1]
+
+    good_sig = _sign_st_payload(payload_b64, GATEWAY_SHARED_SECRET)
+    if sig_b64 != good_sig:
+        if not GATEWAY_SHARED_SECRET_PREV:
+            return None
+        good_sig_prev = _sign_st_payload(payload_b64, GATEWAY_SHARED_SECRET_PREV)
+        if sig_b64 != good_sig_prev:
+            return None
+
+    try:
+        payload = _b64url_decode_to_json(payload_b64)
+    except Exception:
+        return None
+
+    now = int(time.time())
+    # exp/iat mínimos (exp requerido, iat opcional)
+    try:
+        if int(payload.get("exp", 0)) < now:
+            return None
+    except Exception:
+        return None
+
+    if payload.get("aud") != GATE_AUD:
+        return None
+
+    return payload
+
+# ============ Cookie de sesión local firmada ============
+# Podemos reutilizar el secret del gateway; si prefieres, define BUSCADOR_SESSION_SECRET aparte.
+from itsdangerous import TimestampSigner, BadSignature, SignatureExpired
+_svc_signer = TimestampSigner(os.getenv("BUSCADOR_SESSION_SECRET", GATEWAY_SHARED_SECRET))
+
+def _set_svc_session(resp, email: str):
+    token = _svc_signer.sign(email.encode("utf-8")).decode("utf-8")
+    resp.set_cookie(
+        SVC_SESSION_COOKIE, token,
+        max_age=SVC_SESSION_TTL, httponly=True,
+        samesite="strict" if IS_PROD else "lax",
+        secure=IS_PROD, path="/"
+    )
+
+def _get_svc_email() -> str | None:
+    tok = request.cookies.get(SVC_SESSION_COOKIE)
+    if not tok:
+        return None
+    try:
+        raw = _svc_signer.unsign(tok, max_age=SVC_SESSION_TTL)
+        return raw.decode("utf-8")
+    except (BadSignature, SignatureExpired):
+        return None
+
+def _clear_svc_session(resp):
+    resp.delete_cookie(SVC_SESSION_COOKIE, path="/")
+
+# ============ Guard (antes y después de cada request) ============
+@app.before_request
+def gate_guard():
+    path = (request.path or "").rstrip("/")
+
+    # permite estáticos (Flask sirve /static/* automáticamente)
+    if path.startswith("/static/"):
+        return
+
+    # permite rutas anónimas exactas
+    if path in ANON_PATHS:
+        return
+
+    # ¿ya hay sesión local?
+    email = _get_svc_email()
+    if email:
+        g._svc_email = email
+        return
+
+    # ¿viene st en query o Authorization Bearer?
+    st = request.args.get("st")
+    if not st:
+        auth = request.headers.get("Authorization", "")
+        if auth.lower().startswith("bearer "):
+            st = auth.split(" ", 1)[1].strip()
+
+    payload = _verify_st(st) if st else None
+    if payload:
+        # marcar para setear cookie al final
+        g._set_cookie_email = payload.get("sub", "")
+        return
+
+    # No autorizado → 401 con botón al Hub
+    html = f"""
+    <!doctype html><html><head><meta charset="utf-8"/>
+      <title>401 — Autenticación requerida</title>
+    </head>
+    <body style="font-family:system-ui;background:#0b1020;color:#e6ebff;display:grid;place-items:center;height:100vh;margin:0">
+      <div style="max-width:680px;background:#0f162b;border:1px solid rgba(255,255,255,.08);padding:24px;border-radius:14px">
+        <h2 style="margin:0 0 8px">Acceso restringido</h2>
+        <p style="margin:0 0 14px;opacity:.8">Para usar el Buscador debes entrar desde el Hub.</p>
+        <a href="{HUB_HOME}" style="display:inline-block;background:#22c55e;color:#08150c;padding:10px 16px;border-radius:10px;font-weight:800;text-decoration:none">Ir al Hub</a>
+      </div>
+    </body></html>
+    """
+    return make_response(html, 401)
+
+@app.after_request
+def gate_after(resp):
+    # Si entró con st válido en esta request, crea cookie de sesión local
+    email = getattr(g, "_set_cookie_email", None)
+    if email:
+        _set_svc_session(resp, email)
+
+    # Evitar cache de HTML por defecto
+    ct = (resp.headers.get("Content-Type") or "").lower()
+    if "text/html" in ct:
+        resp.headers["Cache-Control"] = "no-store"
+    # Cache extendida para assets estáticos (siempre que pasen por Flask)
+    if request.path.startswith("/static/"):
+        resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    return resp
+
+# Logout local del buscador
+@app.route("/logout")
+def logout_local():
+    resp = redirect(HUB_HOME)
+    _clear_svc_session(resp)
+    resp.headers["Clear-Site-Data"] = '"cache","cookies","storage"'
+    return resp
 
 # ==========================================================
 # FUNCIÓN PARA LIMPIAR ARCHIVOS ANTIGUOS (CSV Y EXCEL > 1h)
@@ -227,8 +402,7 @@ def buscar():
             lon = str(fila.get('Longitud_decimal', '')).replace(',', '.')
             epsg = fila.get('Codigo_EPSG_decimal')
             if lat and lon and epsg:
-                lat = float(lat)
-                lon = float(lon)
+                lat = float(lat); lon = float(lon)
                 if not transformadores[epsg]:
                     transformadores[epsg] = Transformer.from_crs(
                         f"EPSG:{epsg}", "EPSG:4326", always_xy=True
@@ -271,7 +445,7 @@ def buscar():
         ws.append([fila.get(col, '') for col in columnas_mostrar])
     wb.save(xlsx_path)
 
-    # Guardar rutas en sesión
+    # Guardar rutas en sesión (Flask session SOLO para paths de exportación)
     session['csv_export_path'] = csv_path
     session['excel_export_path'] = xlsx_path
 
