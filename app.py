@@ -1,4 +1,4 @@
-# ==============================
+# ============================== 
 # IMPORTACIÓN DE LIBRERÍAS
 # ==============================
 from flask import Flask, render_template, request, send_file, session, jsonify, redirect, make_response, g
@@ -156,7 +156,7 @@ def gate_guard():
         g._set_cookie_email = payload.get("sub", "")
         return
 
-    # No autorizado → 401 con botón al Hub
+    # No autorizado → 401 con botón al Hub (TEXTO ACTUALIZADO)
     html = f"""
     <!doctype html><html><head><meta charset="utf-8"/>
       <title>401 — Autenticación requerida</title>
@@ -164,7 +164,9 @@ def gate_guard():
     <body style="font-family:system-ui;background:#0b1020;color:#e6ebff;display:grid;place-items:center;height:100vh;margin:0">
       <div style="max-width:680px;background:#0f162b;border:1px solid rgba(255,255,255,.08);padding:24px;border-radius:14px">
         <h2 style="margin:0 0 8px">Acceso restringido</h2>
-        <p style="margin:0 0 14px;opacity:.8">Para usar el Buscador debes entrar desde el Hub.</p>
+        <p style="margin:0 0 14px;opacity:.8">
+          Para usar la <strong>Consulta Avanzada de la Base de Datos Biótica</strong> debes entrar desde el Hub.
+        </p>
         <a href="{HUB_HOME}" style="display:inline-block;background:#22c55e;color:#08150c;padding:10px 16px;border-radius:10px;font-weight:800;text-decoration:none">Ir al Hub</a>
       </div>
     </body></html>
@@ -507,3 +509,4 @@ def health():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+
