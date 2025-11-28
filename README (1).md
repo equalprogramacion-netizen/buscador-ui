@@ -1,7 +1,7 @@
 
-# Aplicación Web Biotico
+# Buscador Biótico Web
 
-Aplicación web para visualizar, filtrar y exportar datos biológicos conectados a una base de datos MySQL. Construida con **Flask** y desplegada usando **Railway**.
+Aplicación web para visualizar, filtrar y exportar datos biológicos conectados a una base de datos MySQL. Construida con **Flask** y desplegada usando **Railway** / otros proveedores (Render, etc.). Incluye mapa interactivo (Leaflet), clustering accesible y exportaciones avanzadas CSV/Excel.
 
 ## 🚀 Tecnologías utilizadas
 
@@ -9,15 +9,17 @@ Aplicación web para visualizar, filtrar y exportar datos biológicos conectados
 - Flask
 - MySQL (Railway)
 - HTML/CSS (Jinja2 templates)
-- Pandas (para exportaciones CSV/Excel)
+- OpenPyXL (exportación Excel avanzada)
+- Leaflet + MarkerCluster (visualización geoespacial)
+- python-dotenv (gestión de variables locales)
 
 ## ⚙️ Instalación local
 
 1. Clona el repositorio:
 
    ```bash
-   git clone https://github.com/CarlosGuinea666/biotico_app_web.git
-   cd biotico_app_web
+   git clone https://github.com/equalprogramacion-netizen/buscador-ui.git
+   cd buscador-ui
    ```
 
 2. Crea un entorno virtual (opcional pero recomendado):
@@ -34,7 +36,7 @@ Aplicación web para visualizar, filtrar y exportar datos biológicos conectados
    pip install -r requirements.txt
    ```
 
-4. Crea un archivo `.env` (opcional) o configura las variables de entorno para conexión MySQL:
+4. Crea un archivo `.env` (puedes copiar de `.env.example`) o configura las variables de entorno para conexión MySQL:
 
    ```env
    DB_HOST=nozomi.proxy.rlwy.net
@@ -87,16 +89,52 @@ biotico_app_web/
 
 ## 🧪 Funcionalidades principales
 
-- Filtros dinámicos por año, tipo, municipio, etc.
-- Exportación de resultados a CSV y Excel
-- Transformación de coordenadas (UTM a geográficas)
-- Conexión directa a base de datos MySQL en la nube
+- Filtros dinámicos por múltiples campos (municipio, proyecto, nombres científico/común, grupo biológico, tipo hidrobiota, palabra clave global).
+- Búsqueda global opcional sobre todas las columnas (LIKE dinámico).
+- Exportación avanzada: CSV y Excel con columnas alineadas, BOM opcional, fecha normalizada, coordenadas transformadas opcionales.
+- Transformación de coordenadas (EPSG original → WGS84) sin sobrescribir datos crudos.
+- Mapa Leaflet con clusters dinámicos, accesibles y contadores con separador de miles.
+- Tema oscuro accesible (alto contraste, placeholders legibles, focus-visible consistente).
+- Limpieza automática de archivos de exportación (>1 hora).
+- Nombres de archivos de exportación con timestamp y hoja Resumen en Excel.
 
 ---
 
-## ✍️ Autor
+## 📦 Variables de entorno clave
 
-- **Carlos Guinea** - [GitHub](https://github.com/CarlosGuinea666)
+```
+FLASK_SECRET_KEY=...
+EXPORT_FOLDER=temp_exports
+DB_HOST=...
+DB_PORT=...
+DB_USER=...
+DB_PASSWORD=...
+DB_NAME=railway
+DB_TABLE=biotic_database
+CSV_ADD_BOM=1
+CSV_DELIMITER=,
+EXPORT_INCLUDE_MAP_COORDS=1
+EXCEL_HEADER_FILL=18263f
+EXCEL_HEADER_FONT=e6ebff
+EXCEL_MAX_COL_WIDTH=60
+```
+
+## ✍️ Autores / Mantenimiento
+
+- Equipo Equal Programación / Netizen
+- Contribuciones iniciales: Carlos Guinea
+
+## 🗺️ Roadmap breve
+
+- Paginación server-side para grandes volúmenes
+- Índices / FULLTEXT para búsqueda global eficiente
+- Filtro por rangos de fecha
+- Mejora de logging y métricas (transformaciones fallidas)
+- Modo tabla compacta y vista resumen estadística
+
+## 📝 Historial
+
+Consulta `changelog.txt` para detalles de versiones (v3.0.0 última actualización de accesibilidad y exportaciones).
 
 ## Local
 1) Crear .env (ver ejemplo abajo)

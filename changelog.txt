@@ -29,3 +29,13 @@
 - Se limpia entorno de desarrollo (`venv` ignorado)
 - Se verifican variables de entorno en Render
 
+## v3.0.0 - Mejora de accesibilidad, exportaciones y mapa (Nov 2025)
+- Tema oscuro unificado y accesible con hoja `static/hub-theme.css` (placeholders legibles, alto contraste, focus-visible).
+- Exportaciones CSV y Excel alineadas: mismas columnas, inclusión opcional de coordenadas transformadas (`Latitud_mapa`, `Longitud_mapa`).
+- CSV: BOM opcional, delimitador configurable, línea de metadatos con total de registros, streaming para reducir memoria.
+- Excel: encabezados estilizados, ancho automático, congelación de fila 1, hoja "Resumen" con metadatos (total, timestamp, columnas, inclusión de coords).
+- Transformación de coordenadas mantiene valores originales y agrega campos para el mapa sin sobrescribir.
+- Mejora del mapa Leaflet: clusters con tamaños dinámicos, accesibles (aria-label, tabindex), contador con separadores de miles.
+- Limpieza de exportaciones temporales antigua (archivos >1h) y nombres de archivo con timestamp.
+- Correcciones de merge y consolidación de branding, guard de entorno y lógica de transformadores.
+
