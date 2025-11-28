@@ -11,44 +11,33 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <!-- Leaflet: para visualización de mapas -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- MarkerCluster: agrupación de puntos para reducir carga -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
   <!-- DataTables: mejora el manejo de tablas (paginación, búsqueda, etc.) -->
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" />
+  <!-- Tema unificado -->
+  <link rel="stylesheet" href="/static/hub-theme.css" />
 
   <!-- =====================
        ESTILOS PERSONALIZADOS
        ===================== -->
   <style>
-    /* Altura del mapa y separación superior */
-    #map { height: 500px; margin-top: 2rem; }
-
-    /* Contenedor para permitir scroll horizontal en tablas grandes */
-    .table-wrapper { overflow-x: auto; position: relative; }
-
-    /* Estilo de tabla: tamaño de fuente, ancho mínimo y bordes */
-    table { font-size: 0.9em; border-collapse: collapse; width: 100%; min-width: 1000px; }
-
-    /* Encabezado fijo para la tabla al hacer scroll */
-    thead th { position: sticky; top: 0; background-color: #212529; color: white; z-index: 2; }
-
-    /* Espaciado en celdas */
-    th, td { padding: 8px; border: 1px solid #dee2e6; white-space: nowrap; }
-
-    /* Botones flotantes para subir y ver mapa */
-    .floating-btn {
-      position: fixed; z-index: 999; bottom: 30px; width: 45px; height: 45px;
-      border: none; border-radius: 50%; color: white; font-size: 20px;
-      cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-      transition: background-color 0.3s; display: none;
+    :root {
+      --primary: {{ PRIMARY }};
+      --accent:  {{ ACCENT }};
+      --ink:     {{ INK }};
+      --muted:   {{ MUTED }};
+      --bg:      {{ BG }};
+      --card:    {{ CARD }};
+      --border:  {{ BORDER }};
+      --logo-radius: {{ LOGO_RADIUS }};
     }
-    #btnSubir { right: 30px; background-color: #0d6efd; }
-    #btnMapa { right: 85px; background-color: #198754; }
-    #btnSubir:hover { background-color: #0b5ed7; }
-    #btnMapa:hover { background-color: #157347; }
   </style>
 </head>
 
-<body class="bg-light">
-<div class="container mt-4">
+<body>
+<div class="wrap animate-enter">
 
   <!-- ==========================
        ENCABEZADO DE RESULTADOS
@@ -64,10 +53,10 @@
        ============================== -->
   {% if resultados %}
     <!-- Botones de exportación y volver -->
-    <div class="mb-3 d-flex gap-2">
-      <a href="/exportar_csv" class="btn btn-success">📁 Exportar a CSV</a>
-      <button onclick="exportarTablaAExcel()" class="btn btn-warning">📊 Exportar a Excel</button>
-      <a href="/" class="btn btn-secondary">🔍 Nueva búsqueda</a>
+    <div class="mb-3 d-flex gap-2 flex-wrap">
+      <a href="/exportar_csv" class="btn-main">📁 CSV (todo)</a>
+      <a href="/exportar_excel" class="btn-outline">📊 Excel (todo)</a>
+      <a href="/" class="btn-outline">🔍 Nueva búsqueda</a>
     </div>
 
     <!-- ===============================
@@ -95,10 +84,10 @@
                 <td>{{ fila.get(col, 'No disponible') or 'No disponible' }}</td>
               {% endfor %}
               {% if 'Latitud_decimal' not in columnas_mostrar %}
-                <td>{{ fila.get('Latitud_decimal', 'No disponible') or 'No disponible' }}</td>
+                <td>{{ fila.get('Latitud_mapa', 'No disponible') or 'No disponible' }}</td>
               {% endif %}
               {% if 'Longitud_decimal' not in columnas_mostrar %}
-                <td>{{ fila.get('Longitud_decimal', 'No disponible') or 'No disponible' }}</td>
+                <td>{{ fila.get('Longitud_mapa', 'No disponible') or 'No disponible' }}</td>
               {% endif %}
             </tr>
           {% endfor %}
@@ -116,16 +105,19 @@
 
   {% else %}
     <!-- Mensaje cuando no se encuentran resultados -->
-    <div class="alert alert-warning">No se encontraron resultados.</div>
-    <a href="/" class="btn btn-secondary">🔍 Nueva búsqueda</a>
+        <div class="table-wrapper" style="background:#1d273d">
+          <div class="alert alert-warning" style="margin:0">No se encontraron resultados.</div>
+        </div>
+        <div class="mt-3"><a href="/" class="btn-outline">🔍 Nueva búsqueda</a></div>
   {% endif %}
 </div>
 
 <!-- ======================
      BOTONES FLOTANTES
      ====================== -->
-<button id="btnSubir" class="floating-btn" onclick="subirPagina()">↑</button>
-<button id="btnMapa" class="floating-btn" onclick="irAlMapa()">🗺️</button>
+<button id="btnSubir" class="floating-btn" onclick="subirPagina()" title="Subir">↑</button>
+<button id="btnMapa" class="floating-btn" onclick="irAlMapa()" title="Ir al mapa">🗺️</button>
+<div class="footer">Tema unificado · Hub Biotico</div>
 
 <!-- ======================
      LIBRERÍAS JAVASCRIPT
@@ -135,6 +127,7 @@
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <!-- ======================
@@ -155,13 +148,33 @@
   });
   
   // Inicializar mapa con Leaflet
-  const map = L.map('map').setView([4.5, -74.1], 6);
+  const mapEl = document.getElementById('map');
+  console.log('[Mapa] Inicializando. Dimensiones iniciales:', mapEl ? mapEl.offsetWidth + 'x' + mapEl.offsetHeight : 'sin elemento');
+  const map = L.map('map');
+  map.setView([4.5, -74.1], 6);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap contributors'
   }).addTo(map);
 
   // Agregar marcadores con información desde backend
   const puntos = {{ coordenadas | default([]) | tojson }};
+  // Crear grupo de clusters (solo si hay > 100 puntos, si no se dejan individuales)
+  const clusterGroup = L.markerClusterGroup({
+    iconCreateFunction: function (cluster) {
+      const count = cluster.getChildCount();
+      const formatted = count.toLocaleString('es-ES');
+      let sizeClass = 'cluster-small';
+      if (count > 30) sizeClass = 'cluster-large';
+      if (count > 100) sizeClass = 'cluster-xlarge';
+      else if (count > 10 && count <= 30) sizeClass = 'cluster-medium';
+      return L.divIcon({
+        html: `<div tabindex="0" role="button" aria-label="Cluster con ${formatted} puntos"><span>${formatted}</span></div>`,
+        className: `marker-cluster ${sizeClass}`,
+        iconSize: L.point(40, 40) // dimensiones finales se ajustan via CSS por clase
+      });
+    }
+  });
+
   puntos.forEach(punto => {
     const lat = parseFloat(punto.lat);
     const lon = parseFloat(punto.lon);
@@ -171,16 +184,37 @@
       const codigoMuestra = punto.Codigo_de_muestra || 'No disponible';
       const proyecto = punto.Proyecto || 'No disponible';
       const fecha = punto.Fecha_de_colecta || 'No disponible';
-
-      L.marker([lat, lon]).addTo(map).bindPopup(
+      const marker = L.marker([lat, lon]).bindPopup(
         `<strong>Nombre científico:</strong> ${nombreCientifico}<br>
          <strong>Nombre común:</strong> ${nombreComun}<br>
          <strong>Código muestra:</strong> ${codigoMuestra}<br>
          <strong>Proyecto:</strong> ${proyecto}<br>
          <strong>Fecha:</strong> ${fecha}`
       );
+      clusterGroup.addLayer(marker);
     }
   });
+
+  if (puntos.length > 0) {
+    map.addLayer(clusterGroup);
+    try { map.fitBounds(clusterGroup.getBounds().pad(0.15)); } catch (e) { console.warn('[Mapa] fitBounds fallo', e); }
+  }
+  // Invalidate en varios intervalos para asegurar render tras layout / fonts
+  [100, 300, 800].forEach(t => setTimeout(() => { try { console.log('[Mapa] invalidateSize en', t); map.invalidateSize(); } catch(e) {} }, t));
+  // Invalidate al evento draw de DataTables (redimension scrollX)
+  $('#tablaResultados').on('draw.dt', function(){ setTimeout(()=>{ try { console.log('[Mapa] invalidateSize tras draw.dt'); map.invalidateSize(); } catch(e){} },150); });
+  // Resize listener por cambios de ventana
+  window.addEventListener('resize', () => { try { map.invalidateSize(); } catch(e){} });
+  // Fallback si altura < 200
+  setTimeout(()=>{
+    if (mapEl && mapEl.offsetHeight < 200) {
+      console.warn('[Mapa] Altura baja detectada, forzando estilo.');
+      mapEl.style.height='480px';
+      try { map.invalidateSize(); } catch(e){}
+    }
+  }, 900);
+
+  // Estilos de clusters ya manejados en hub-theme.css
 
   // Mostrar botones flotantes al hacer scroll
   window.onscroll = function () {
@@ -208,14 +242,8 @@
     }
   }
 
-  // Exportar tabla HTML a archivo Excel (.xlsx)
-  function exportarTablaAExcel() {
-    const tabla = document.getElementById('tablaResultados');
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.table_to_sheet(tabla);
-    XLSX.utils.book_append_sheet(wb, ws, "Resultados");
-    XLSX.writeFile(wb, "resultados_busqueda.xlsx");
-  }
+  // Se eliminó la exportación cliente que solo tomaba filas visibles.
+  // Ahora el enlace /exportar_excel usa el backend para generar el libro completo.
 </script>
 </body>
 </html>

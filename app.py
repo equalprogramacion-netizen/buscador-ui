@@ -1,13 +1,18 @@
 # ============================== 
 # IMPORTACIÓN DE LIBRERÍAS
 # ==============================
-from flask import Flask, render_template, request, send_file, session, jsonify, redirect, make_response, g
+from flask import Flask, render_template, request, send_file, session, jsonify, redirect, make_response, g, Response
 import mysql.connector
 from mysql.connector import pooling
 from pyproj import Transformer
 import csv, io, os, glob, time, uuid, hmac, json, base64
 from collections import defaultdict
 from openpyxl import Workbook
+from openpyxl.worksheet.worksheet import Worksheet
+from openpyxl.styles import Font, PatternFill
+from datetime import datetime
+from openpyxl.utils import get_column_letter
+from typing import cast
 from dotenv import load_dotenv
 
 load_dotenv()  # Cargar variables del .env
@@ -22,6 +27,20 @@ os.makedirs(app.config['EXPORT_FOLDER'], exist_ok=True)
 
 IS_PROD = os.getenv("ENV", "development").lower() == "production"
 
+# ==============================
+# BRANDING (colores y estilos)
+# ==============================
+def brand_vars():
+    return {
+        'PRIMARY': os.getenv('PRIMARY', '#22c55e'),
+        'ACCENT': os.getenv('ACCENT', '#7c9bff'),
+        'INK': os.getenv('INK', '#e6ebff'),
+        'MUTED': os.getenv('MUTED', '#9aa3c7'),
+        'BG': os.getenv('BG', '#0b1020'),
+        'CARD': os.getenv('CARD', '#111833'),
+        'BORDER': os.getenv('BORDER', '#1f2547'),
+        'LOGO_RADIUS': os.getenv('LOGO_RADIUS', '16px')
+    }
 # ==========================================================
 # PUERTA (SSO LIGERO) DESDE EL HUB
 # ==========================================================
@@ -127,6 +146,9 @@ def _clear_svc_session(resp):
 # ============ Guard (antes y después de cada request) ============
 @app.before_request
 def gate_guard():
+    # En desarrollo, desactivar el guard para permitir pruebas locales
+    if not IS_PROD:
+        return
     path = (request.path or "").rstrip("/")
 
     # permite estáticos (Flask sirve /static/* automáticamente)
@@ -156,7 +178,7 @@ def gate_guard():
         g._set_cookie_email = payload.get("sub", "")
         return
 
-    # No autorizado → 401 con botón al Hub (TEXTO ACTUALIZADO)
+    # No autorizado → 401 con botón al Hub
     html = f"""
     <!doctype html><html><head><meta charset="utf-8"/>
       <title>401 — Autenticación requerida</title>
@@ -164,9 +186,7 @@ def gate_guard():
     <body style="font-family:system-ui;background:#0b1020;color:#e6ebff;display:grid;place-items:center;height:100vh;margin:0">
       <div style="max-width:680px;background:#0f162b;border:1px solid rgba(255,255,255,.08);padding:24px;border-radius:14px">
         <h2 style="margin:0 0 8px">Acceso restringido</h2>
-        <p style="margin:0 0 14px;opacity:.8">
-          Para usar la <strong>Consulta Avanzada de la Base de Datos Biótica</strong> debes entrar desde el Hub.
-        </p>
+        <p style="margin:0 0 14px;opacity:.8">Para usar el Buscador debes entrar desde el Hub.</p>
         <a href="{HUB_HOME}" style="display:inline-block;background:#22c55e;color:#08150c;padding:10px 16px;border-radius:10px;font-weight:800;text-decoration:none">Ir al Hub</a>
       </div>
     </body></html>
@@ -225,7 +245,7 @@ if missing:
 
 dbconfig = {
     "host": os.getenv("DB_HOST"),
-    "port": int(os.getenv("DB_PORT")),
+    "port": int(os.getenv("DB_PORT", "3306")),
     "user": os.getenv("DB_USER"),
     "password": os.getenv("DB_PASSWORD"),
     "database": DB_NAME,
@@ -298,7 +318,8 @@ def index():
         proyectos=proyectos,
         especies=especies,
         grupos_biologicos=grupos_biologicos,
-        tipos_hidrobiota=tipos_hidrobiota
+        tipos_hidrobiota=tipos_hidrobiota,
+        **brand_vars()
     )
 
 # ===============================
@@ -345,14 +366,29 @@ def buscar():
     else:
         columnas_mostrar = list(set(columnas_mostrar + columnas_clave))
 
-    # Validamos contra columnas reales (respeta el orden en la tabla)
+    # Validamos contra columnas reales (respeta el orden de la tabla)
     columnas_mostrar = [col for col in columnas_disponibles if col in columnas_mostrar]
+
+    # Columnas mínimas necesarias para procesamiento (mapa y popups)
+    columnas_min_proc = {
+        'Latitud_decimal', 'Longitud_decimal', 'Codigo_EPSG_decimal',
+        'Nombre_cientifico', 'Nombre_comun', 'Codigo_de_muestra', 'Proyecto', 'Fecha_de_colecta'
+    }
+    columnas_requeridas = set(columnas_mostrar) | columnas_min_proc
+    # Selección final respetando el orden real de la tabla
+    columnas_select = [c for c in columnas_disponibles if c in columnas_requeridas]
+
+    # Helper para citar columnas con backticks
+    def qc(col: str) -> str:
+        return f"`{col}`"
 
     # ---------- Construcción del SQL ----------
     conn = cnxpool.get_connection()
     cursor = conn.cursor(dictionary=True)
 
-    query = f"SELECT * FROM {FULL_TABLE} WHERE 1=1"
+    # SELECT explícito para evitar confusiones de columnas
+    select_cols_sql = ", ".join(qc(c) for c in columnas_select)
+    query = f"SELECT {select_cols_sql} FROM {FULL_TABLE} WHERE 1=1"
     filtros = []
     valores = []
 
@@ -379,10 +415,10 @@ def buscar():
         valores.append(f"%{tipo_hidrobiota}%")
     if palabra_clave:
         if columna_clave and columna_clave != "__todas__" and columna_clave in columnas_disponibles:
-            filtros.append(f"{columna_clave} LIKE %s")
+            filtros.append(f"{qc(columna_clave)} LIKE %s")
             valores.append(f"%{palabra_clave}%")
         elif columna_clave == "__todas__" and columnas_disponibles:
-            subfiltros = [f"{col} LIKE %s" for col in columnas_disponibles]
+            subfiltros = [f"{qc(col)} LIKE %s" for col in columnas_disponibles]
             filtros.append("(" + " OR ".join(subfiltros) + ")")
             valores.extend([f"%{palabra_clave}%"] * len(columnas_disponibles))
 
@@ -395,7 +431,7 @@ def buscar():
     # ===============================
     # TRANSFORMACIÓN DE COORDENADAS
     # ===============================
-    transformadores = defaultdict(lambda: None)
+    transformadores: dict[str, Transformer] = {}
     coordenadas = []
 
     for fila in resultados:
@@ -405,13 +441,14 @@ def buscar():
             epsg = fila.get('Codigo_EPSG_decimal')
             if lat and lon and epsg:
                 lat = float(lat); lon = float(lon)
-                if not transformadores[epsg]:
+                if epsg not in transformadores:
                     transformadores[epsg] = Transformer.from_crs(
                         f"EPSG:{epsg}", "EPSG:4326", always_xy=True
                     )
                 lon_wgs84, lat_wgs84 = transformadores[epsg].transform(lon, lat)
-                fila['Latitud_decimal'] = lat_wgs84
-                fila['Longitud_decimal'] = lon_wgs84
+                # NO sobrescribir los valores decimales originales (proyectados)
+                fila['Longitud_mapa'] = lon_wgs84
+                fila['Latitud_mapa'] = lat_wgs84
                 coordenadas.append({
                     'lat': lat_wgs84,
                     'lon': lon_wgs84,
@@ -422,34 +459,139 @@ def buscar():
                     'Fecha_de_colecta': fila.get('Fecha_de_colecta') or 'No disponible'
                 })
         except:
-            fila['Latitud_decimal'] = None
-            fila['Longitud_decimal'] = None
+            fila['Latitud_mapa'] = None
+            fila['Longitud_mapa'] = None
 
     # =======================================
     # EXPORTACIÓN DE RESULTADOS A CSV Y EXCEL
     # =======================================
+    # Columnas finales de exportación (alineadas entre CSV y Excel)
+    include_map = os.getenv("EXPORT_INCLUDE_MAP_COORDS", "1") == "1"
+    export_columnas = columnas_mostrar.copy()
+    if include_map:
+        # Solo agregamos si existen coordenadas calculadas y no están ya en la lista
+        if any(f.get('Latitud_mapa') is not None for f in resultados):
+            if 'Latitud_mapa' not in export_columnas:
+                export_columnas.append('Latitud_mapa')
+        if any(f.get('Longitud_mapa') is not None for f in resultados):
+            if 'Longitud_mapa' not in export_columnas:
+                export_columnas.append('Longitud_mapa')
+
     export_id = str(uuid.uuid4())
+    timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
     csv_path = os.path.join(app.config['EXPORT_FOLDER'], f"{export_id}.csv")
     xlsx_path = os.path.join(app.config['EXPORT_FOLDER'], f"{export_id}.xlsx")
 
-    # CSV
+    # =====================
+    # EXPORTACIÓN A CSV
+    # =====================
+    add_bom = os.getenv("CSV_ADD_BOM", "1") == "1"
+    delimiter = os.getenv("CSV_DELIMITER", ",")
+    quoting_mode = csv.QUOTE_MINIMAL
+    fecha_cols = {c for c in export_columnas if 'fecha' in c.lower()}
+    total_registros = len(resultados)
     with open(csv_path, 'w', encoding='utf-8', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=columnas_mostrar)
+        if add_bom:
+            f.write('\ufeff')
+        # Línea de metadatos inicial
+        f.write(f"# total_registros: {total_registros}\n")
+        writer = csv.DictWriter(
+            f,
+            fieldnames=export_columnas,
+            delimiter=delimiter,
+            quoting=quoting_mode
+        )
         writer.writeheader()
         for fila in resultados:
-            writer.writerow({col: fila.get(col, '') for col in columnas_mostrar})
+            out_row = {}
+            for col in export_columnas:
+                val = fila.get(col, '')
+                if col in fecha_cols and isinstance(val, str):
+                    parsed = None
+                    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%Y/%m/%d", "%d-%m-%Y"):
+                        try:
+                            parsed = datetime.strptime(val, fmt)
+                            break
+                        except Exception:
+                            pass
+                    if parsed:
+                        val = parsed.strftime('%Y-%m-%d')
+                out_row[col] = val
+            writer.writerow(out_row)
 
-    # Excel
+    # =====================
+    # EXPORTACIÓN A EXCEL
+    # =====================
     wb = Workbook()
-    ws = wb.active
-    ws.append(columnas_mostrar)
+    ws = cast(Worksheet, wb.active)
+    ws.title = "Datos"
+    ws.append(export_columnas)
+
     for fila in resultados:
-        ws.append([fila.get(col, '') for col in columnas_mostrar])
+        row_values = []
+        for col in export_columnas:
+            val = fila.get(col, '')
+            if col in fecha_cols and isinstance(val, str):
+                parsed = None
+                for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%Y/%m/%d", "%d-%m-%Y"):
+                    try:
+                        parsed = datetime.strptime(val, fmt)
+                        break
+                    except Exception:
+                        pass
+                if parsed:
+                    val = parsed
+            row_values.append(val)
+        ws.append(row_values)
+
+    header_fill_color = os.getenv('EXCEL_HEADER_FILL', '18263f')
+    header_font_color = os.getenv('EXCEL_HEADER_FONT', 'e6ebff')
+    for cell in ws[1]:
+        cell.font = Font(bold=True, color=header_font_color)
+        cell.fill = PatternFill(start_color=header_fill_color, end_color=header_fill_color, fill_type="solid")
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = ws.dimensions
+    max_width = int(os.getenv('EXCEL_MAX_COL_WIDTH', '60'))
+    for idx, col_cells in enumerate(ws.columns, start=1):
+        max_len = 0
+        for c in col_cells:
+            val = c.value
+            if val is None:
+                length = 0
+            elif isinstance(val, datetime):
+                length = len(val.strftime('%Y-%m-%d'))
+            else:
+                length = len(str(val))
+            if length > max_len:
+                max_len = length
+        adjusted = min(max_len + 2, max_width)
+        ws.column_dimensions[get_column_letter(idx)].width = adjusted
+    for col in fecha_cols:
+        try:
+            idx = export_columnas.index(col) + 1
+            for r in range(2, ws.max_row + 1):
+                cell = ws.cell(row=r, column=idx)
+                if isinstance(cell.value, datetime):
+                    cell.number_format = 'YYYY-MM-DD'
+        except ValueError:
+            pass
+    # Hoja resumen
+    resumen = wb.create_sheet(title="Resumen")
+    resumen.append(["Campo", "Valor"])
+    resumen.append(["total_registros", total_registros])
+    resumen.append(["fecha_exportacion", timestamp_str])
+    resumen.append(["columnas", ",".join(export_columnas)])
+    resumen.append(["incluir_coord_mapa", "si" if include_map else "no"])
+    # Estilo simple para encabezado resumen
+    resumen["A1"].font = Font(bold=True)
+    resumen["B1"].font = Font(bold=True)
     wb.save(xlsx_path)
 
     # Guardar rutas en sesión (Flask session SOLO para paths de exportación)
     session['csv_export_path'] = csv_path
     session['excel_export_path'] = xlsx_path
+    session['export_columnas'] = export_columnas
+    session['export_timestamp'] = timestamp_str
 
     cursor.close()
     conn.close()
@@ -461,7 +603,8 @@ def buscar():
         columnas_csv=columnas_mostrar,
         palabra=palabra_clave,
         columna=columna_clave,
-        coordenadas=coordenadas
+        coordenadas=coordenadas,
+        **brand_vars()
     )
 
 # ===================================
@@ -472,7 +615,14 @@ def exportar_csv():
     export_path = session.get('csv_export_path')
     if not export_path or not os.path.exists(export_path):
         return 'No hay resultados para exportar en CSV', 400
-    return send_file(export_path, mimetype='text/csv', as_attachment=True, download_name='resultados.csv')
+    def generate():
+        with open(export_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                yield line
+    ts = session.get('export_timestamp', datetime.now().strftime('%Y%m%d_%H%M%S'))
+    resp = Response(generate(), mimetype='text/csv')
+    resp.headers['Content-Disposition'] = f'attachment; filename=resultados_{ts}.csv'
+    return resp
 
 # =======================================
 # RUTA "/exportar_excel" (DESCARGA EXCEL)
@@ -482,11 +632,12 @@ def exportar_excel():
     export_path = session.get('excel_export_path')
     if not export_path or not os.path.exists(export_path):
         return 'No hay resultados para exportar en Excel', 400
+    ts = session.get('export_timestamp', datetime.now().strftime('%Y%m%d_%H%M%S'))
     return send_file(
         export_path,
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         as_attachment=True,
-        download_name='resultados.xlsx'
+        download_name=f'resultados_{ts}.xlsx'
     )
 
 # (Opcional) endpoint de salud
@@ -508,5 +659,4 @@ def health():
 # ===============================
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-
-
+    app.run(host='0.0.0.0', port=port)

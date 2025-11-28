@@ -1,0 +1,219 @@
+/* hub-theme.css: Tema unificado alto contraste */
+/* Usa variables definidas en cada template: PRIMARY, ACCENT, etc. */
+:root {
+  color-scheme: dark;
+}
+html, body {height:100%;}
+body {
+  margin:0;
+  background:linear-gradient(180deg,#0b1020,#0d1528 55%,#0b1020);
+  color:var(--ink);
+  font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto;
+  -webkit-font-smoothing:antialiased;
+}
+a {color:var(--primary);text-decoration:none;}
+a:hover {color:var(--accent);}
+a:focus-visible {outline:2px solid var(--accent);outline-offset:2px;border-radius:6px;}
+
+.wrap {max-width:1300px;margin:40px auto;padding:0 24px;}
+.card-box, .table-wrapper {border:1px solid #243048;border-radius:var(--logo-radius);box-shadow:0 12px 34px -6px rgba(0,0,0,.55);background:linear-gradient(145deg,#121a30,#10182b);}
+.card-box {padding:32px 30px 30px;}
+.table-wrapper {padding:20px 20px 16px;}
+
+label {font-weight:600;color:var(--ink);}
+input.input, input.form-control, .select2-container--default .select2-selection--single, .select2-container--default .select2-selection--multiple {
+  background:#111e32 !important; /* fondo un poco más claro para mayor contraste con borde */
+  border:1px solid #4d7fae !important; /* borde más visible */
+  color:var(--ink) !important;
+  border-radius:var(--logo-radius) !important;
+  box-shadow:0 0 0 2px rgba(99,105,124,.35), 0 1px 1px rgba(0,0,0,.45) inset; /* inset reducido para menor oscurecimiento interno */
+}
+/* Texto seleccionado en Select2 y placeholder con mayor legibilidad */
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+  color:var(--ink) !important;
+  font-weight:600; /* mayor peso para contraste perceptivo */
+  letter-spacing:.2px;
+  font-size:.95rem;
+}
+/* Placeholder selects más visible (alto contraste) */
+.select2-container--default .select2-selection--single .select2-selection__placeholder {
+  color:#d8e6f7 !important; /* nuevo tono claro para distinguir del fondo oscuro */
+  font-style:normal;
+  text-shadow:0 0 1px rgba(0,0,0,.4);
+}
+/* Placeholder inputs alineado con nuevo color y sombra ligera */
+input.input::placeholder, input.form-control::placeholder { color:#f5f9ff; font-weight:600; letter-spacing:.25px; text-shadow:0 0 1px rgba(0,0,0,.55); }
+/* Textarea placeholder y contenido (si existen) para mantener consistencia */
+textarea::placeholder { color:#f5f9ff; font-weight:600; letter-spacing:.25px; text-shadow:0 0 1px rgba(0,0,0,.55); }
+textarea { color:var(--ink); background:#111e32; border:1px solid #4d7fae; border-radius:var(--logo-radius); box-shadow:0 0 0 2px rgba(99,105,124,.35), 0 1px 1px rgba(0,0,0,.45) inset; }
+/* Estado focus: mayor contraste y borde marcado */
+input.input:focus, input.form-control:focus, .select2-container--default.select2-container--focus .select2-selection--single, .select2-container--default.select2-container--focus .select2-selection--multiple {
+  border-color:var(--accent) !important;
+  box-shadow:0 0 0 3px rgba(124,155,255,.35), 0 1px 2px rgba(0,0,0,.7) inset !important;
+}
+/* Labels ligeramente más fuertes */
+label.form-label { font-weight:600; letter-spacing:.2px; }
+/* Pequeño aumento de tamaño de fuente en tabla para legibilidad */
+table { font-size:0.9em; }
+/* (Removido color antiguo #5d6e90 para evitar baja legibilidad) */
+input.input:focus, input.form-control:focus {border-color:var(--accent) !important; box-shadow:0 0 0 3px rgba(124,155,255,.35);}
+input.input:focus-visible, input.form-control:focus-visible {outline:none;}
+
+.btn-main {background:var(--primary);color:#071d10;font-weight:700;border:0;border-radius:var(--logo-radius);padding:12px 22px;min-height:46px;display:inline-flex;align-items:center;gap:8px;letter-spacing:.3px;transition:.25s all;}
+.btn-main:hover {transform:translateY(-3px);box-shadow:0 0 26px rgba(34,197,94,.55);}
+.btn-main:focus-visible {outline:2px solid var(--accent);outline-offset:2px;}
+.btn-outline {background:#1d273d;color:var(--ink);border:1px solid #2d3c5e;border-radius:var(--logo-radius);padding:12px 22px;font-weight:600;display:inline-flex;align-items:center;gap:6px;transition:.25s all;}
+.btn-outline:hover {background:#25324a;}
+.btn-outline:focus-visible {outline:2px solid var(--accent);outline-offset:2px;}
+
+/* Select2 high contrast */
+.select2-dropdown {background:#10182b !important;border:1px solid #2d3c5e !important;}
+.select2-search__field {background:#0f1626 !important;color:var(--ink) !important;border:1px solid #2d3c5e !important;}
+.select2-search__field:focus {border-color:var(--accent) !important;box-shadow:0 0 0 2px rgba(124,155,255,.4);}
+.select2-results__option[aria-selected=true] {background:#18263f !important;}
+.select2-container--default .select2-results__option--highlighted {background:var(--accent) !important;color:#fff !important;}
+.select2-container--default .select2-results__option {color:var(--ink) !important; font-size:.92rem; letter-spacing:.15px;}
+/* Mejor contraste para opción seleccionada persistente */
+.select2-container--default .select2-results__option[aria-selected=true] {background:#1f314b !important; color:var(--ink) !important; font-weight:600;}
+.select2-container--default .select2-selection--multiple .select2-selection__choice {background:#243048 !important;border:1px solid #36507a !important;color:var(--ink) !important;}
+.select2-container--default .select2-selection--multiple .select2-selection__choice__remove {color:#89a2d0 !important;}
+
+/* Fallback select (antes de que Select2 aplique estilos) */
+select.form-select, select.form-control, select {
+  background:#111e32 !important;
+  color:var(--ink) !important;
+  border:1px solid #4d7fae !important;
+  font-weight:600;
+  letter-spacing:.2px;
+  box-shadow:0 0 0 2px rgba(99,105,124,.25), 0 1px 1px rgba(0,0,0,.45) inset;
+}
+select.form-select:focus, select:focus {
+  border-color:var(--accent) !important;
+  box-shadow:0 0 0 3px rgba(124,155,255,.35), 0 1px 1px rgba(0,0,0,.55) inset !important;
+}
+select.form-select option, select option {background:#10182b;color:var(--ink);}
+select.form-select option:hover, select option:focus {background:#1f314b;color:var(--ink);}
+
+/* Área de búsqueda dentro del dropdown (evita fondo gris claro inicial) */
+.select2-container--default .select2-search--dropdown {background:#10182b !important; padding:4px 6px;}
+.select2-container--default .select2-search--dropdown .select2-search__field {
+  background:#111e32 !important;
+  border:1px solid #4d7fae !important;
+  color:var(--ink) !important;
+  border-radius:var(--logo-radius) !important;
+  box-shadow:0 0 0 2px rgba(99,105,124,.25), 0 1px 1px rgba(0,0,0,.45) inset;
+  font-weight:600;
+  letter-spacing:.2px;
+}
+.select2-container--default .select2-search--dropdown .select2-search__field::placeholder {color:#f5f9ff; font-weight:600; letter-spacing:.25px;}
+
+/* Fondo base de opciones no seleccionadas para evitar bandas grises */
+.select2-container--default .select2-results__option[aria-selected=false] {background:#10182b;}
+/* Scrollbar oscuro (WebKit) */
+.select2-results__options::-webkit-scrollbar {width:10px;}
+.select2-results__options::-webkit-scrollbar-track {background:#0d1528;}
+.select2-results__options::-webkit-scrollbar-thumb {background:#243048;border-radius:6px;border:1px solid #2d3c5e;}
+
+/* Table */
+table {font-size:0.85em;width:100%;min-width:1100px;color:var(--ink);border-collapse:separate;border-spacing:0;}
+thead th {position:sticky;top:0;background:#18263f;color:var(--ink);border-bottom:1px solid #2d3c5e;padding:8px 10px;font-weight:600;}
+tbody td {padding:6px 10px;border-bottom:1px solid #1e2b44;}
+tbody tr:nth-child(even) {background:#142035;}
+tbody tr:hover {background:#1b2b46;}
+tbody tr:focus-within {outline:2px solid var(--accent);outline-offset:-2px;}
+/* Tabla refinada (menos tosco) */
+table {font-size:0.88em;}
+thead th {background:linear-gradient(180deg,#1c2b42,#18263f);border-bottom:1px solid #2d3c5e;}
+tbody td {border-bottom:1px solid rgba(45,60,94,.55);} /* separador más tenue */
+tbody tr:nth-child(even) {background:#131f33;}
+tbody tr:nth-child(odd) {background:#101a2b;}
+tbody tr:hover {background:#1d304b;}
+tbody tr td:first-child {border-left:1px solid #243048;}
+tbody tr td:last-child {border-right:1px solid #243048;}
+.table-wrapper {box-shadow:0 8px 28px -6px rgba(0,0,0,.55);border:1px solid #243048;border-radius:var(--logo-radius);}
+.table-wrapper::-webkit-scrollbar {height:12px;}
+.table-wrapper::-webkit-scrollbar-track {background:#0d1528;}
+.table-wrapper::-webkit-scrollbar-thumb {background:#243048;border:1px solid #2d3c5e;border-radius:8px;}
+
+/* Mapa asegurado visible */
+#map {height:480px;min-height:480px;width:100%;border:1px solid #243048;border-radius:var(--logo-radius);box-shadow:0 6px 20px -4px rgba(0,0,0,.55);background:#101a2b;position:relative;overflow:hidden;}
+#map.leaflet-container {background:#0f1828;}
+#map::before {content:"";position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,.025),rgba(255,255,255,.01));pointer-events:none;}
+
+/* DataTables */
+.dataTables_wrapper .dataTables_length select, .dataTables_wrapper .dataTables_filter input {background:#121b33;border:1px solid #2d3c5e;color:var(--ink);border-radius:8px;padding:4px 8px;}
+.dataTables_wrapper .dataTables_filter input:focus {border-color:var(--accent);box-shadow:0 0 0 2px rgba(124,155,255,.35);}
+.dataTables_wrapper .dataTables_paginate .paginate_button {color:var(--ink)!important;border:1px solid #2d3c5e!important;background:#1a2539!important;margin:2px!important;border-radius:6px!important;}
+.dataTables_wrapper .dataTables_paginate .paginate_button:hover {background:#25324a!important;}
+.dataTables_wrapper .dataTables_paginate .paginate_button.current {background:var(--accent)!important;color:#fff!important;box-shadow:0 0 0 2px rgba(124,155,255,.35);}
+
+/* Floating buttons */
+.floating-btn {position:fixed;z-index:999;bottom:30px;width:48px;height:48px;border:none;border-radius:50%;color:#fff;font-size:20px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.55);transition:background .25s,transform .25s;display:none;}
+#btnSubir {right:30px;background:var(--accent);}
+#btnMapa {right:90px;background:var(--primary);color:#071d10;font-weight:800;}
+.floating-btn:hover {transform:translateY(-3px);}
+.floating-btn:focus-visible {outline:2px solid #fff;outline-offset:3px;}
+
+/* Map cluster icons improved contrast */
+.marker-cluster div {
+  background:linear-gradient(135deg,#1e3a8a,#2563eb);
+  color:#f8fafc;
+  border-radius:50%;
+  width:42px;height:42px;
+  display:flex;align-items:center;justify-content:center;
+  font-weight:700;letter-spacing:.3px;font-size:13px;
+  border:2px solid rgba(255,255,255,.85);
+  box-shadow:0 2px 6px rgba(0,0,0,.6), 0 0 0 4px rgba(37,99,235,.35);
+  transition:transform .2s, box-shadow .2s, background .25s;
+}
+.marker-cluster.cluster-medium div {
+  background:linear-gradient(135deg,#b45309,#f59e0b);
+  color:#08111d;
+  width:46px;height:46px;
+  border:2px solid rgba(255,255,255,.9);
+  box-shadow:0 2px 6px rgba(0,0,0,.65), 0 0 0 4px rgba(245,158,11,.4);
+}
+.marker-cluster.cluster-large div {
+  background:linear-gradient(135deg,#7f1d1d,#dc2626);
+  color:#ffffff;
+  width:50px;height:50px;
+  border:2px solid rgba(255,255,255,.95);
+  box-shadow:0 2px 8px rgba(0,0,0,.7), 0 0 0 4px rgba(220,38,38,.45);
+}
+.marker-cluster.cluster-xlarge div {
+  background:linear-gradient(135deg,#312e81,#4338ca 45%,#4f46e5);
+  color:#f5f9ff;
+  width:56px;height:56px;
+  border:2px solid rgba(255,255,255,.95);
+  box-shadow:0 2px 10px rgba(0,0,0,.75), 0 0 0 5px rgba(79,70,229,.5);
+}
+.marker-cluster div span {filter:drop-shadow(0 1px 2px rgba(0,0,0,.7));}
+.marker-cluster:hover div, .marker-cluster:focus div {transform:scale(1.08);box-shadow:0 4px 12px rgba(0,0,0,.75), 0 0 0 5px rgba(255,255,255,.55);} 
+.marker-cluster:focus-visible div {outline:3px solid var(--accent);outline-offset:2px;}
+/* Botón secundario (form reset) accesible y consistente con btn-outline */
+.btn-secondary {background:linear-gradient(145deg,#1f2c42,#182436);color:var(--ink);border:1px solid #30445f;border-radius:var(--logo-radius);padding:12px 22px;font-weight:600;display:inline-flex;align-items:center;gap:6px;letter-spacing:.25px;box-shadow:0 4px 14px -6px rgba(0,0,0,.55),0 0 0 2px rgba(99,105,124,.25);transition:.28s background,.25s transform,.25s box-shadow;}
+.btn-secondary:hover {background:linear-gradient(145deg,#25374f,#1d2a3d);transform:translateY(-2px);box-shadow:0 6px 20px -6px rgba(0,0,0,.6),0 0 0 3px rgba(124,155,255,.25);}
+.btn-secondary:active {transform:translateY(0);box-shadow:0 3px 10px -4px rgba(0,0,0,.55),0 0 0 2px rgba(99,105,124,.25);}
+.btn-secondary:focus-visible {outline:2px solid var(--accent);outline-offset:3px;}
+
+/* Focus visible refinado para paginación DataTables */
+.dataTables_wrapper .dataTables_paginate .paginate_button:focus-visible {outline:2px solid var(--accent)!important;outline-offset:2px;border-radius:6px;box-shadow:0 0 0 4px rgba(124,155,255,.35);}
+
+/* Select2 contenedores focus accesible (single y multiple) */
+.select2-container--default .select2-selection--single:focus-visible,
+.select2-container--default .select2-selection--multiple:focus-visible {outline:2px solid var(--accent);outline-offset:3px;}
+
+/* Elevar contraste visible al usar teclado sobre elección múltiple chips */
+.select2-container--default .select2-selection--multiple .select2-selection__choice:focus-visible {outline:2px solid var(--accent);outline-offset:2px;}
+
+/* Utilidad general para forzar anillos de enfoque si se requiere en markup */
+.focus-ring {outline:2px solid var(--accent)!important;outline-offset:3px;border-radius:6px;}
+
+/* Footer */
+.footer {margin-top:40px;font-size:12px;color:var(--muted);text-align:center;}
+
+/* High contrast focus for links inside table */
+table a:focus-visible {outline:2px solid var(--accent);outline-offset:2px;border-radius:4px;}
+
+/* Utilities */
+.sr-only {position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0;}
